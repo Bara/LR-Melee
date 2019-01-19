@@ -1,7 +1,3 @@
-/*
-    - Kein Throw Damage?
-*/
-
 #pragma semicolon 1
 
 #include <sourcemod>
