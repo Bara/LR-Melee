@@ -154,9 +154,15 @@ public Action Event_ItemRemove(Event event, const char[] name, bool dontBroadcas
         if (bRemove)
         {
             int weapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+            
+            if (!IsValidEntity(weapon))
+            {
+                return;
+            }
+            
             int iDef = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
             
-            if (IsValidEntity(weapon) && defIndex == iDef)
+            if (defIndex == iDef)
             {
                CreateTimer(4.0, Timer_RemoveWeapon, EntIndexToEntRef(weapon));
             }
@@ -286,6 +292,12 @@ void PrepareLR(Handle hArray, int inArray)
 {
     g_iLRPrisoner = GetArrayCell(hArray, inArray, view_as<int>(Block_Prisoner));
     g_iLRGuard = GetArrayCell(hArray, inArray, view_as<int>(Block_Guard));
+    
+    if (!IsClientValid(g_iLRPrisoner) || !IsClientValid(g_iLRGuard))
+    {
+        CPrintToChatAll("{darkred}[Last Request] {default}Can't start this lr...");
+        return;
+    }
     
     bool bAsk = false;
     
@@ -470,7 +482,14 @@ void StartLR(const char[] game, bool mode = false, const char[] sMode = "")
         EquipPlayerWeapon(g_iLRGuard, weapon);
     }
     
-    InitializeLR(g_iLRPrisoner);
+    if (IsClientValid(g_iLRPrisoner))
+    {
+        InitializeLR(g_iLRPrisoner);
+    }
+    else
+    {
+        ResetSettings();
+    }
 }
 
 public Action Timer_SetBlock(Handle timer)
