@@ -1,3 +1,7 @@
+/*
+    - Kein Throw Damage?
+*/
+
 #pragma semicolon 1
 
 #include <sourcemod>
@@ -13,6 +17,7 @@
 #pragma newdecls required
 
 #define LoopClients(%1) for(int %1 = 1; %1 <= MaxClients; %1++) if(IsClientValid(%1))
+#define DMG_THROW (2 << 6)
 
 int g_iCurrentLR = -1;
 
@@ -23,13 +28,14 @@ int g_iLRHammer = -1;
 int g_iLRSpanner = -1;
 
 int g_iLRPrisoner = -1;
-
 int g_iLRGuard = -1;
 
 bool g_bRunning = false;
 bool g_bMessage = false;
+bool g_bThrowDamage = false;
 
-int g_iClip1 = -1;
+int g_iPrimaryAttack = -1;
+int g_iSecondaryAttack = -1;
 
 public Plugin myinfo = 
 {
@@ -46,16 +52,13 @@ public void OnPluginStart()
     HookEvent("item_remove", Event_ItemRemove);
     HookEvent("weapon_fire", Event_WeaponFire);
     
-    g_iClip1 = FindSendPropInfo("CBaseCombatWeapon", "m_iClip1");
-    if (g_iClip1 == -1)
-    {
-        SetFailState("Unable to find offset for clip.");
-    }
-    
     LoopClients(client)
     {
-    	OnClientPutInServer(client);
+        OnClientPutInServer(client);
     }
+    
+    g_iPrimaryAttack = FindSendPropInfo("CBaseCombatWeapon", "m_flNextPrimaryAttack");
+    g_iSecondaryAttack = FindSendPropInfo("CBaseCombatWeapon", "m_flNextSecondaryAttack");
 }
 
 public void OnConfigsExecuted()
@@ -107,7 +110,7 @@ public void OnPluginEnd()
 
 public void OnClientPutInServer(int client)
 {
-	SDKHook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
+    SDKHook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
 }
 
 public Action Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
@@ -130,7 +133,7 @@ public Action Event_ItemRemove(Event event, const char[] name, bool dontBroadcas
             DataPack pack = new DataPack();
             pack.WriteCell(event.GetInt("userid"));
             pack.WriteString("axe");
-            CreateTimer(1.7, Timer_GiveItem, pack);
+            CreateTimer(1.4, Timer_GiveItem, pack);
             bRemove = true;
         }
         
@@ -139,7 +142,7 @@ public Action Event_ItemRemove(Event event, const char[] name, bool dontBroadcas
             DataPack pack = new DataPack();
             pack.WriteCell(event.GetInt("userid"));
             pack.WriteString("hammer");
-            CreateTimer(1.7, Timer_GiveItem, pack);
+            CreateTimer(1.4, Timer_GiveItem, pack);
             bRemove = true;
         }
         
@@ -148,17 +151,19 @@ public Action Event_ItemRemove(Event event, const char[] name, bool dontBroadcas
             DataPack pack = new DataPack();
             pack.WriteCell(event.GetInt("userid"));
             pack.WriteString("spanner");
-            CreateTimer(1.7, Timer_GiveItem, pack);
+            CreateTimer(1.4, Timer_GiveItem, pack);
             bRemove = true;
         }
         
         if (bRemove)
         {
-        	int weapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-        	int iDef = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
-        	
-        	if (IsValidEntity(weapon) && defIndex == iDef)
-        	   CreateTimer(4.0, Timer_RemoveWeapon, EntIndexToEntRef(weapon));
+            int weapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+            int iDef = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+            
+            if (IsValidEntity(weapon) && defIndex == iDef)
+            {
+               CreateTimer(4.0, Timer_RemoveWeapon, EntIndexToEntRef(weapon));
+            }
         }
     }
 }
@@ -181,7 +186,9 @@ public Action Event_WeaponFire(Event event, const char[] name, bool dontBroadcas
             
             int weapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
             if (IsValidEntity(weapon))
+            {
                CreateTimer(1.0, Timer_RemoveWeapon, EntIndexToEntRef(weapon));
+            }
         }
     }
 }
@@ -216,19 +223,33 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
         return Plugin_Continue;
     }
     
-    if (g_iCurrentLR == g_iLRAxe && StrContains(sWeapon, "axe", false) != -1)
+    if (g_bThrowDamage)
     {
-        return Plugin_Continue;
+        if (damagetype & DMG_THROW)
+        {
+            return Plugin_Continue;
+        }
+        else
+        {
+            return Plugin_Handled;
+        }
     }
-    
-    if (g_iCurrentLR == g_iLRHammer && StrContains(sWeapon, "hammer", false) != -1)
+    else
     {
-        return Plugin_Continue;
-    }
-    
-    if (g_iCurrentLR == g_iLRSpanner && StrContains(sWeapon, "spanner", false) != -1)
-    {
-        return Plugin_Continue;
+        if (g_iCurrentLR == g_iLRAxe && StrContains(sWeapon, "axe", false) != -1)
+        {
+            return Plugin_Continue;
+        }
+        
+        if (g_iCurrentLR == g_iLRHammer && StrContains(sWeapon, "hammer", false) != -1)
+        {
+            return Plugin_Continue;
+        }
+        
+        if (g_iCurrentLR == g_iLRSpanner && StrContains(sWeapon, "spanner", false) != -1)
+        {
+            return Plugin_Continue;
+        }
     }
     
     return Plugin_Handled;
@@ -239,15 +260,25 @@ public int LR_Start(Handle LR_Array, int iIndexInArray)
     g_iCurrentLR = GetArrayCell(LR_Array, iIndexInArray, view_as<int>(Block_LRType));
     
     if(g_iCurrentLR == g_iLRZeus)
-        StartLR(LR_Array, iIndexInArray);
+    {
+        PrepareLR(LR_Array, iIndexInArray);
+    }
     else if(g_iCurrentLR == g_iLRFists)
-        StartLR(LR_Array, iIndexInArray);
+    {
+        PrepareLR(LR_Array, iIndexInArray);
+    }
     else if(g_iCurrentLR == g_iLRAxe)
-        StartLR(LR_Array, iIndexInArray);
+    {
+        PrepareLR(LR_Array, iIndexInArray);
+    }
     else if(g_iCurrentLR == g_iLRHammer)
-        StartLR(LR_Array, iIndexInArray);
+    {
+        PrepareLR(LR_Array, iIndexInArray);
+    }
     else if(g_iCurrentLR == g_iLRSpanner)
-        StartLR(LR_Array, iIndexInArray);
+    {
+        PrepareLR(LR_Array, iIndexInArray);
+    }
 }
 
 public int LR_Stop(int Type, int Prisoner, int Guard)
@@ -255,80 +286,232 @@ public int LR_Stop(int Type, int Prisoner, int Guard)
     ResetSettings();
 }
 
-void StartLR(Handle hArray, int inArray)
+void PrepareLR(Handle hArray, int inArray)
 {
     g_iLRPrisoner = GetArrayCell(hArray, inArray, view_as<int>(Block_Prisoner));
     g_iLRGuard = GetArrayCell(hArray, inArray, view_as<int>(Block_Guard));
     
-    RemoveAllWeapons(g_iLRPrisoner);
-    RemoveAllWeapons(g_iLRGuard);
+    bool bAsk = false;
     
-    int iWeaponP = -1;
-    int iWeaponG = -1;
-    
-    char sGame[24];
+    char sGame[16];
     if(g_iCurrentLR == g_iLRZeus)
     {
         Format(sGame, sizeof(sGame), "Zeus");
-        
-        iWeaponP = GivePlayerItem(g_iLRPrisoner, "weapon_taser");
-        iWeaponG = GivePlayerItem(g_iLRGuard, "weapon_taser");
-        
-        EquipPlayerWeapon(g_iLRPrisoner, iWeaponP);
-        EquipPlayerWeapon(g_iLRGuard, iWeaponG);
     }
     else if(g_iCurrentLR == g_iLRFists)
     {
         Format(sGame, sizeof(sGame), "Fist");
-        
-        iWeaponP = GivePlayerItem(g_iLRPrisoner, "weapon_fists");
-        iWeaponG = GivePlayerItem(g_iLRGuard, "weapon_fists");
-        
-        EquipPlayerWeapon(g_iLRPrisoner, iWeaponP);
-        EquipPlayerWeapon(g_iLRGuard, iWeaponG);
     }
     else if(g_iCurrentLR == g_iLRAxe)
     {
         Format(sGame, sizeof(sGame), "Axe");
-        
-        iWeaponP = GivePlayerItem(g_iLRPrisoner, "weapon_axe");
-        iWeaponG = GivePlayerItem(g_iLRGuard, "weapon_axe");
-        
-        EquipPlayerWeapon(g_iLRPrisoner, iWeaponP);
-        EquipPlayerWeapon(g_iLRGuard, iWeaponG);
+        bAsk = true;
     }
     else if(g_iCurrentLR == g_iLRHammer)
     {
         Format(sGame, sizeof(sGame), "Hammer");
-        
-        iWeaponP = GivePlayerItem(g_iLRPrisoner, "weapon_hammer");
-        iWeaponG = GivePlayerItem(g_iLRGuard, "weapon_hammer");
-        
-        EquipPlayerWeapon(g_iLRPrisoner, iWeaponP);
-        EquipPlayerWeapon(g_iLRGuard, iWeaponG);
+        bAsk = true;
     }
     else if(g_iCurrentLR == g_iLRSpanner)
     {
         Format(sGame, sizeof(sGame), "Spanner");
-        
-        iWeaponP = GivePlayerItem(g_iLRPrisoner, "weapon_spanner");
-        iWeaponG = GivePlayerItem(g_iLRGuard, "weapon_spanner");
-        
-        EquipPlayerWeapon(g_iLRPrisoner, iWeaponP);
-        EquipPlayerWeapon(g_iLRGuard, iWeaponG);
+        bAsk = true;
     }
     
     if (IsClientValid(g_iLRPrisoner))
     {
-    	if (!g_bMessage)
-    	{
-            CPrintToChatAll("[Last Request] %N requested %s Fight against %N.", g_iLRPrisoner, sGame, g_iLRGuard);
+        if (bAsk)
+        {        
+            AskGamemode(g_iLRPrisoner, sGame);
+        }
+        else
+        {
+            StartLR(sGame);
+        }
+    }
+}
+
+void AskGamemode(int client, const char[] game)
+{
+    if (IsClientValid(client) && client == g_iLRPrisoner)
+    {
+        Menu menu = new Menu(Menu_AskGamemode);
+        
+        menu.SetTitle("Which gamemode?");
+        menu.AddItem("throw", "Throw Damage");
+        menu.AddItem("melee", "Melee Damage");
+        menu.AddItem("game", game, ITEMDRAW_IGNORE);
+        
+        menu.Display(client, 10);
+    }
+    else
+    {
+        ResetSettings();
+    }
+}
+
+public int Menu_AskGamemode(Menu menu, MenuAction action, int client, int param)
+{
+    if (action == MenuAction_Select)
+    {
+        if (!IsClientValid(client))
+        {
+            ResetSettings();
+            return;
         }
         
-        g_bMessage = true;
-    	g_bRunning = true;
-        InitializeLR(g_iLRPrisoner);
+        char sOption[8];
+        menu.GetItem(param, sOption, sizeof(sOption));
+        
+        char sMode[8];
+        Format(sMode, sizeof(sMode), "Melee");
+        
+        char sGame[16];
+        char sInfoBuffer[8], sGameBuffer[16];
+        for (int i = 0; i < menu.ItemCount; i++)
+        {
+            menu.GetItem(i, sInfoBuffer, sizeof(sInfoBuffer), _, sGameBuffer, sizeof(sGameBuffer));
+            
+            if (StrEqual(sInfoBuffer, "game", false))
+            {
+                strcopy(sGame, sizeof(sGame), sGameBuffer);
+                break;
+            }
+        }
+        
+        if (strlen(sGame) < 3)
+        {
+            CPrintToChatAll("{darkred}[Last Request] {default}Something went wrong with info/game buffer...");
+            ResetSettings();
+            return;
+        }
+        
+        if (StrEqual(sOption, "throw", false))
+        {
+            Format(sMode, sizeof(sMode), "Throw");
+            g_bThrowDamage = true;
+        }
+        
+        StartLR(sGame, true, sMode);
     }
+    else if (action == MenuAction_Cancel)
+    {
+        if (param == MenuCancel_Timeout)
+        {
+            ResetSettings();
+            
+            if (IsClientValid(g_iLRPrisoner))
+            {
+                CPrintToChatAll("{darkred}[Last Request] {green}%N {default}took too long.", g_iLRPrisoner);
+            }
+        }
+    }
+    else if (action == MenuAction_End)
+    {
+        delete menu;
+    }
+}
+
+void StartLR(const char[] game, bool mode = false, const char[] sMode = "")
+{
+    if (!g_bMessage)
+    {
+        if (mode)
+        {
+            CPrintToChatAll("{darkred}[Last Request] {green}%N {default}requested {green}%s Fight {default}(Gamemode: {green}%s Damage{default}) against {green}%N{default}.", g_iLRPrisoner, game, sMode, g_iLRGuard);
+            CreateTimer(0.1, Timer_SetBlock, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+        }
+        else
+        {
+            CPrintToChatAll("{darkred}[Last Request] {green}%N {default}requested {green}%s Fight {default}against {green}%N{default}.", g_iLRPrisoner, game, g_iLRGuard);
+        }
+    }
+    
+    g_bMessage = true;
+    g_bRunning = true;
+    
+    RemoveAllWeapons(g_iLRPrisoner);
+    RemoveAllWeapons(g_iLRGuard);
+    
+    if(g_iCurrentLR == g_iLRZeus)
+    {
+        int weapon = GivePlayerItem(g_iLRPrisoner, "weapon_taser");
+        EquipPlayerWeapon(g_iLRPrisoner, weapon);
+
+        weapon = GivePlayerItem(g_iLRGuard, "weapon_taser");
+        EquipPlayerWeapon(g_iLRGuard, weapon);
+    }
+    else if(g_iCurrentLR == g_iLRFists)
+    {
+        int weapon = GivePlayerItem(g_iLRPrisoner, "weapon_fists");
+        EquipPlayerWeapon(g_iLRPrisoner, weapon);
+
+        weapon = GivePlayerItem(g_iLRGuard, "weapon_fists");
+        EquipPlayerWeapon(g_iLRGuard, weapon);
+    }
+    else if(g_iCurrentLR == g_iLRAxe)
+    {
+        int weapon = GivePlayerItem(g_iLRPrisoner, "weapon_axe");
+        EquipPlayerWeapon(g_iLRPrisoner, weapon);
+
+        weapon = GivePlayerItem(g_iLRGuard, "weapon_axe");
+        EquipPlayerWeapon(g_iLRGuard, weapon);
+    }
+    else if(g_iCurrentLR == g_iLRHammer)
+    {
+        int weapon = GivePlayerItem(g_iLRPrisoner, "weapon_hammer");
+        EquipPlayerWeapon(g_iLRPrisoner, weapon);
+
+        weapon = GivePlayerItem(g_iLRGuard, "weapon_hammer");
+        EquipPlayerWeapon(g_iLRGuard, weapon);
+    }
+    else if(g_iCurrentLR == g_iLRSpanner)
+    {
+        int weapon = GivePlayerItem(g_iLRPrisoner, "weapon_spanner");
+        EquipPlayerWeapon(g_iLRPrisoner, weapon);
+
+        weapon = GivePlayerItem(g_iLRGuard, "weapon_spanner");
+        EquipPlayerWeapon(g_iLRGuard, weapon);
+    }
+    
+    InitializeLR(g_iLRPrisoner);
+}
+
+public Action Timer_SetBlock(Handle timer)
+{
+    if (g_bRunning && (g_iCurrentLR == g_iLRAxe || g_iCurrentLR == g_iLRHammer || g_iCurrentLR == g_iLRSpanner))
+    {
+        LoopClients(client)
+        {
+            if (client != g_iLRGuard && client != g_iLRPrisoner)
+            {
+                continue;
+            }
+            
+            int weapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+            
+            if (!IsValidEntity(weapon))
+            {
+                return Plugin_Continue;
+            }
+            
+            int iDef = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+            
+            if (iDef == view_as<int>(CSWeapon_AXE) || iDef == view_as<int>(CSWeapon_HAMMER) || iDef == view_as<int>(CSWeapon_SPANNER))
+            {
+                if (g_bThrowDamage)
+                {
+                   SetEntDataFloat(weapon, g_iPrimaryAttack, GetGameTime() + 1.0);
+                }
+                else
+                {
+                   SetEntDataFloat(weapon, g_iSecondaryAttack, GetGameTime() + 1.0);
+                }
+            }
+        }
+    }
+    
+    return Plugin_Stop;
 }
 
 void ResetSettings()
@@ -341,6 +524,7 @@ void ResetSettings()
     g_iCurrentLR = -1;
     
     g_bMessage = false;
+    g_bThrowDamage = false;
 }
 
 bool IsClientValid(int client)
@@ -375,7 +559,7 @@ public Action Timer_GiveItem(Handle timer, DataPack pack)
     
     if (IsClientValid(client) && IsPlayerAlive(client))
     {
-    	Format(sWeapon, sizeof(sWeapon), "weapon_%s", sWeapon);
+        Format(sWeapon, sizeof(sWeapon), "weapon_%s", sWeapon);
         int iWeapon = GivePlayerItem(client, sWeapon);
         
         EquipPlayerWeapon(client, iWeapon);
