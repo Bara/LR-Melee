@@ -422,6 +422,12 @@ public int Menu_AskGamemode(Menu menu, MenuAction action, int client, int param)
 
 void StartLR(const char[] game, bool mode = false, const char[] sMode = "")
 {
+    if (!IsClientValid(g_iLRPrisoner) || !IsClientValid(g_iLRGuard))
+    {
+        ResetSettings();
+        return;
+    }
+
     if (!g_bMessage)
     {
         if (mode)
@@ -482,14 +488,12 @@ void StartLR(const char[] game, bool mode = false, const char[] sMode = "")
         EquipPlayerWeapon(g_iLRGuard, weapon);
     }
     
-    if (IsClientValid(g_iLRPrisoner))
-    {
-        InitializeLR(g_iLRPrisoner);
-    }
-    else
-    {
-        ResetSettings();
-    }
+    SetHealth(g_iLRPrisoner);
+    ResetArmor(g_iLRPrisoner);
+    SetHealth(g_iLRGuard);
+    ResetArmor(g_iLRGuard);
+    
+    InitializeLR(g_iLRPrisoner);
 }
 
 public Action Timer_SetBlock(Handle timer)
@@ -663,4 +667,21 @@ bool SafeRemoveWeapon(int client, int weapon, int slot)
     AcceptEntityInput(weapon, "Kill");
     
     return true;
+}
+
+void SetHealth(int client)
+{
+    SetEntityHealth(client, 100);
+}
+
+void ResetArmor(int client)
+{
+    SetEntProp(client, Prop_Send, "m_bHasHelmet", false);
+    SetEntProp(client, Prop_Data, "m_ArmorValue", 0);
+    
+    if (GetEntProp(client, Prop_Send, "m_bHasHeavyArmor"))
+    {
+        SetEntProp(client, Prop_Send, "m_bHasHeavyArmor", false);
+        SetEntProp(client, Prop_Send, "m_bWearingSuit", false);
+    }
 }
