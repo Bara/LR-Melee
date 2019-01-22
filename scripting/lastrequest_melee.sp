@@ -13,7 +13,6 @@
 #pragma newdecls required
 
 #define LoopClients(%1) for(int %1 = 1; %1 <= MaxClients; %1++) if(IsClientValid(%1))
-#define DMG_THROW (2 << 6)
 
 int g_iCurrentLR = -1;
 
@@ -227,7 +226,7 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
     
     if (g_bThrowDamage)
     {
-        if (damagetype & DMG_THROW)
+        if (damagetype & DMG_CLUB)
         {
             return Plugin_Continue;
         }
@@ -490,6 +489,7 @@ void StartLR(const char[] game, bool mode = false, const char[] sMode = "")
     
     SetHealth(g_iLRPrisoner);
     ResetArmor(g_iLRPrisoner);
+    
     SetHealth(g_iLRGuard);
     ResetArmor(g_iLRGuard);
     
